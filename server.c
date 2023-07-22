@@ -3,12 +3,13 @@
 #include <ws2tcpip.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include <conio.h>
 
-const char mimeTypes[3][2][20] = {
+const char mimeTypes[5][2][20] = {
     { "html", "text/html" },
     { "css", "text/css" },
-    { "js", "text/javascript" }
+    { "js", "text/javascript" },
+    { "webp", "image/webp" },
+    { "webm", "video/webm" }
 };
 
 char *getMime(char *ext) {
@@ -20,6 +21,11 @@ char *getMime(char *ext) {
             const char *selectedMime = mimeTypes[i][1];
 
             extReturn = (char *)malloc(sizeof(selectedMime));
+
+            if (extReturn == NULL) {
+                return NULL;
+            }
+
             strcpy(extReturn, selectedMime);
 
             return extReturn;
@@ -27,9 +33,31 @@ char *getMime(char *ext) {
     }
 
     extReturn = (char *)malloc(sizeof(defMime));
+
+    if (extReturn == NULL) {
+        return NULL;
+    }
+
     strcpy(extReturn, defMime);
 
     return extReturn;
+}
+
+char *getRoute(char *str) {
+    int size = strlen(str);
+    char *result = (char *)malloc(size);
+
+    if (result == NULL) {
+        return NULL;
+    }
+
+    for (int i = 0; i < strlen(str) - 1; ++i) {
+        result[i] = *(str + (i + 1));
+    }
+
+    result[size - 1] = '\0';
+
+    return result;
 }
 
 int main() {
@@ -41,7 +69,7 @@ int main() {
     int bytesRecieved;
     char tempHttpResHead[] = "HTTP/1.1 200 OK\r\nContent-Type: %s\r\n\r\n";
     char httpResHead[] = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n";
-    char termi;
+    char httpErrRes[] = "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain;charset=UTF-8\r\n\r\nPage not found 🗿";
 
     if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
         printf("wsa startup failed\n");
@@ -74,7 +102,7 @@ int main() {
 
     printf("server listening on port 8080\n");
 
-    while (termi != 'q') {
+    while (1) {
         if ((client = accept(serverSock, (struct sockaddr*)&clientAddr, &clientAddrSize)) == INVALID_SOCKET) {
             closesocket(serverSock);
             printf("failed to accept\n");
@@ -101,76 +129,90 @@ int main() {
         }
 
         char *req = strtok(firstLine, " ");
+        req = strtok(NULL, " ");
 
         if (req == NULL) {
             closesocket(client);
             continue;
         }
 
-        req = strtok(NULL, " ");
+        if (strcmp(req, "/") == 0) {
+            char res[] = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\njoe mama";
 
-        if (req != NULL) {
-            if (strcmp(req, "/") == 0) {
-                char res[] = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\njoe mama";
+            if (send(client, res, strlen(res), 0) == SOCKET_ERROR) {
+                printf("failed to send\n");
+            }
+        } else {
+            char *reqFile = getRoute(req);
 
-                if (send(client, res, strlen(res), 0) == SOCKET_ERROR) {
-                    printf("failed to send\n");
-                }
-            } else {
+            if (reqFile != NULL) {
                 FILE *stacFile;
-                char *reqFile = strtok(req, "/");
+                char stacRoute[50];
 
-                if (reqFile != NULL) {
-                    char stacRoute[50];
+                snprintf(stacRoute, sizeof(stacRoute), "public/%s", reqFile);
+                stacFile = fopen(stacRoute, "rb");
 
-                    snprintf(stacRoute, sizeof(stacRoute), "public/%s", reqFile);
-                    stacFile = fopen(stacRoute, "rb");
+                if (stacFile == NULL) {
+                    send(client, httpErrRes, strlen(httpErrRes), 0);
+                } else {
+                    char *fileBytes;
+                    int size;
 
-                    if (stacFile != NULL) {
-                        char *fileBytes;
-                        int size;
+                    fseek(stacFile, 0, SEEK_END);
+                    size = ftell(stacFile);
+                    rewind(stacFile);
 
-                        fseek(stacFile, 0, SEEK_END);
-                        size = ftell(stacFile);
-                        rewind(stacFile);
+                    fileBytes = (char *)malloc(size);
+                    
+                    if (fileBytes != NULL) {
+                        for (int i = 0; i < size; ++i) {
+                            fileBytes[i] = fgetc(stacFile);
+                        }
 
-                        fileBytes = (char *)malloc(size);
-                        
-                        if (fileBytes != NULL) {
-                            for (int i = 0; i < size; ++i) {
-                                fileBytes[i] = fgetc(stacFile);
+                        char *resHead;
+                        char *ext = strtok(reqFile, ".");
+
+                        ext = strtok(NULL, ".");
+
+                        if (ext == NULL) {
+                            resHead = (char *)malloc(sizeof(httpResHead));
+
+                            if (resHead != NULL) { 
+                                send(client, httpResHead, strlen(httpResHead), 0);
+                                free(resHead);
                             }
+                        } else {
+                            char *resMime = getMime(ext);
 
-                            char *ext = strtok(reqFile, ".");
-                            char *resHead;
-
-                            ext = strtok(NULL, ".");
-
-                            if (ext == NULL) {
-                                resHead = (char *)malloc(sizeof(httpResHead));
-                                strcpy(resHead, httpResHead);
-                            } else {
-                                char *resMime = getMime(ext);
+                            if (resMime != NULL) {
                                 resHead = (char *)malloc(strlen(tempHttpResHead) + strlen(resMime) + 1);
 
-                                sprintf(resHead, "HTTP/1.1 200 OK\r\nContent-Type: %s\r\n\r\n", resMime);     
+                                if (resHead != NULL) {
+                                    sprintf(resHead, "HTTP/1.1 200 OK\r\nContent-Type: %s\r\n\r\n", resMime);     
+                                    send(client, resHead, strlen(resHead), 0);
+                                    free(resHead);
+                                }
+
                                 free(resMime);
                             }
-
-                            send(client, resHead, strlen(resHead), 0);
-                            send(client, fileBytes, size, 0);
-
-                            free(resHead);
-                            free(fileBytes);
-                            fclose(stacFile);
                         }
+
+                        send(client, fileBytes, size, 0);
+
+                        fclose(stacFile);
+                        free(fileBytes);
                     }
                 }
+
+                free(reqFile);
             }
         }
 
         closesocket(client);
-        termi = _getch();
+        
+        if (getchar() == 'q') {
+            break;
+        }
     }
 
     closesocket(serverSock);
