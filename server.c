@@ -169,23 +169,17 @@ int main() {
                             fileBytes[i] = fgetc(stacFile);
                         }
 
-                        char *resHead;
                         char *ext = strtok(reqFile, ".");
 
                         ext = strtok(NULL, ".");
 
                         if (ext == NULL) {
-                            resHead = (char *)malloc(sizeof(httpResHead));
-
-                            if (resHead != NULL) { 
-                                send(client, httpResHead, strlen(httpResHead), 0);
-                                free(resHead);
-                            }
+                            send(client, httpResHead, strlen(httpResHead), 0);
                         } else {
                             char *resMime = getMime(ext);
 
                             if (resMime != NULL) {
-                                resHead = (char *)malloc(strlen(tempHttpResHead) + strlen(resMime) + 1);
+                                char *resHead = (char *)malloc(strlen(tempHttpResHead) + strlen(resMime) + 1);
 
                                 if (resHead != NULL) {
                                     sprintf(resHead, "HTTP/1.1 200 OK\r\nContent-Type: %s\r\n\r\n", resMime);     
