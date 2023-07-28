@@ -4,6 +4,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+#define MAX_BUFF 1024 
+
 const char mimeTypes[5][2][20] = {
     { "html", "text/html" },
     { "css", "text/css" },
@@ -65,11 +67,12 @@ int main() {
     SOCKET serverSock, client;
     struct sockaddr_in serverAddr, clientAddr;
     int clientAddrSize = sizeof(clientAddr);
-    char buffer[1024];
+    char buffer[MAX_BUFF + 1];
     int bytesRecieved;
-    char tempHttpResHead[] = "HTTP/1.1 200 OK\r\nContent-Type: %s\r\n\r\n";
-    char httpResHead[] = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n";
-    char httpErrRes[] = "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain;charset=UTF-8\r\n\r\nPage not found 🗿";
+    const char tempHttpHead[] = "HTTP/1.1 200 OK\r\nContent-Type: %s\r\n\r\n";
+    const char httpHtmlHead[] = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n";
+    const char httpErr[] = "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain;charset=UTF-8\r\n\r\nPage not found 🗿";
+    const int tmpHeadS = strlen(tempHttpHead), htmlHeadS = strlen(httpHtmlHead), httpErrS = strlen(httpErr);
 
     if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
         printf("wsa startup failed\n");
@@ -109,7 +112,7 @@ int main() {
             continue;
         }
 
-        if ((bytesRecieved = recv(client, buffer, sizeof(buffer), 0)) == SOCKET_ERROR) {
+        if ((bytesRecieved = recv(client, buffer, MAX_BUFF, 0)) == SOCKET_ERROR) {
             closesocket(client);
             printf("recv failed\n");
             continue;
@@ -120,6 +123,8 @@ int main() {
             printf("no bytes recieved\n");
             continue;
         }
+
+        buffer[bytesRecieved] = '\0';
 
         char *firstLine = strtok(buffer, "\n");
 
@@ -153,7 +158,7 @@ int main() {
                 stacFile = fopen(stacRoute, "rb");
 
                 if (stacFile == NULL) {
-                    send(client, httpErrRes, strlen(httpErrRes), 0);
+                    send(client, httpErr, httpErrS, 0);
                 } else {
                     char *fileBytes;
                     int size;
@@ -174,15 +179,15 @@ int main() {
                         ext = strtok(NULL, ".");
 
                         if (ext == NULL) {
-                            send(client, httpResHead, strlen(httpResHead), 0);
+                            send(client, httpHtmlHead, htmlHeadS, 0);
                         } else {
                             char *resMime = getMime(ext);
 
                             if (resMime != NULL) {
-                                char *resHead = (char *)malloc(strlen(tempHttpResHead) + strlen(resMime) + 1);
+                                char *resHead = (char *)malloc(tmpHeadS + strlen(resMime) + 1);
 
                                 if (resHead != NULL) {
-                                    sprintf(resHead, "HTTP/1.1 200 OK\r\nContent-Type: %s\r\n\r\n", resMime);     
+                                    sprintf(resHead, tempHttpHead, resMime);     
                                     send(client, resHead, strlen(resHead), 0);
                                     free(resHead);
                                 }
