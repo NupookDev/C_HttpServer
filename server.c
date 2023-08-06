@@ -6,6 +6,8 @@
 
 #define MAX_BUFF 1024 
 
+const char defMime[] = "text/plain;charset=UTF-8";
+
 const char mimeTypes[5][2][20] = {
     { "html", "text/html" },
     { "css", "text/css" },
@@ -14,35 +16,14 @@ const char mimeTypes[5][2][20] = {
     { "webm", "video/webm" }
 };
 
-char *getMime(char *ext) {
-    char defMime[] = "text/plain;charset=UTF-8";
-    char *extReturn;
-
-    for (int i = 0; i < 3; ++i) {
+const char *getMime(char *ext) {
+    for (int i = 0; i < 5; ++i) {
         if (strcmp(ext, mimeTypes[i][0]) == 0) {
-            const char *selectedMime = mimeTypes[i][1];
-
-            extReturn = (char *)malloc(sizeof(selectedMime));
-
-            if (extReturn == NULL) {
-                return NULL;
-            }
-
-            strcpy(extReturn, selectedMime);
-
-            return extReturn;
+            return mimeTypes[i][1];
         }
     }
 
-    extReturn = (char *)malloc(sizeof(defMime));
-
-    if (extReturn == NULL) {
-        return NULL;
-    }
-
-    strcpy(extReturn, defMime);
-
-    return extReturn;
+    return defMime;
 }
 
 char *getRoute(char *str) {
@@ -53,7 +34,7 @@ char *getRoute(char *str) {
         return NULL;
     }
 
-    for (int i = 0; i < strlen(str) - 1; ++i) {
+    for (int i = 0; i < size - 1; ++i) {
         result[i] = *(str + (i + 1));
     }
 
@@ -69,6 +50,8 @@ int main() {
     int clientAddrSize = sizeof(clientAddr);
     char buffer[MAX_BUFF + 1];
     int bytesRecieved;
+    const char flDeli[] = ".", httpDeli[] = " ";
+    const char staticFolder[] = "public/%s";
     const char tempHttpHead[] = "HTTP/1.1 200 OK\r\nContent-Type: %s\r\n\r\n";
     const char httpHtmlHead[] = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n";
     const char httpErr[] = "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain;charset=UTF-8\r\n\r\nPage not found 🗿";
@@ -133,8 +116,8 @@ int main() {
             continue;
         }
 
-        char *req = strtok(firstLine, " ");
-        req = strtok(NULL, " ");
+        char *req = strtok(firstLine, httpDeli);
+        req = strtok(NULL, httpDeli);
 
         if (req == NULL) {
             closesocket(client);
@@ -154,53 +137,40 @@ int main() {
                 FILE *stacFile;
                 char stacRoute[50];
 
-                snprintf(stacRoute, sizeof(stacRoute), "public/%s", reqFile);
+                snprintf(stacRoute, sizeof(stacRoute), staticFolder, reqFile);
                 stacFile = fopen(stacRoute, "rb");
 
                 if (stacFile == NULL) {
                     send(client, httpErr, httpErrS, 0);
                 } else {
-                    char *fileBytes;
                     int size;
 
                     fseek(stacFile, 0, SEEK_END);
                     size = ftell(stacFile);
                     rewind(stacFile);
 
-                    fileBytes = (char *)malloc(size);
+                    char fileBytes[size];
                     
-                    if (fileBytes != NULL) {
-                        for (int i = 0; i < size; ++i) {
-                            fileBytes[i] = fgetc(stacFile);
-                        }
-
-                        char *ext = strtok(reqFile, ".");
-
-                        ext = strtok(NULL, ".");
-
-                        if (ext == NULL) {
-                            send(client, httpHtmlHead, htmlHeadS, 0);
-                        } else {
-                            char *resMime = getMime(ext);
-
-                            if (resMime != NULL) {
-                                char *resHead = (char *)malloc(tmpHeadS + strlen(resMime) + 1);
-
-                                if (resHead != NULL) {
-                                    sprintf(resHead, tempHttpHead, resMime);     
-                                    send(client, resHead, strlen(resHead), 0);
-                                    free(resHead);
-                                }
-
-                                free(resMime);
-                            }
-                        }
-
-                        send(client, fileBytes, size, 0);
-
-                        fclose(stacFile);
-                        free(fileBytes);
+                    for (int i = 0; i < size; ++i) {
+                        fileBytes[i] = fgetc(stacFile);
                     }
+
+                    char *ext = strtok(reqFile, flDeli);
+
+                    ext = strtok(NULL, flDeli);
+
+                    if (ext == NULL) {
+                        send(client, httpHtmlHead, htmlHeadS, 0);
+                    } else {
+                        const char *resMime = getMime(ext);
+                        char resHead[tmpHeadS + strlen(resMime) + 1];
+
+                        sprintf(resHead, tempHttpHead, resMime);     
+                        send(client, resHead, strlen(resHead), 0);
+                    }
+
+                    send(client, fileBytes, size, 0);
+                    fclose(stacFile);
                 }
 
                 free(reqFile);
